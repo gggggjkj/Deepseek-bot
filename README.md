@@ -20,5 +20,6 @@ Do not commit `.env` or paste API keys into source code. `.env.example` lists th
 
 - LINE webhook signature verification is enabled by `@line/bot-sdk` middleware.
 - Chat history is isolated by LINE user ID, including inside group chats.
+- The bot looks up the sender's LINE display name and includes it as context for DeepSeek. Group and room profile lookup depends on LINE making that member profile available; failures do not prevent replies.
 - The included history and custom prompts live in memory. Render restarts, free-instance sleeps, or multiple instances can clear or separate that state. Add a persistent database such as Redis or PostgreSQL if history must persist.
 - LINE reply tokens expire quickly. For very slow model responses, use a LINE push message flow instead of a reply token.

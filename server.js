@@ -71,12 +71,34 @@ async function handleEvent(event) {
 
   try {
     const history = histories.get(chatId) || [];
-    const answer = await askDeepSeek(chatId, message, history);
+    const displayName = source.userId ? await getLineDisplayName(source) : null;
+    const attributedMessage = displayName
+      ? `【LINE 群組成員：${displayName}】\n${message}`
+      : message;
+    const answer = await askDeepSeek(chatId, attributedMessage, history);
     // Reply token is single-use and expires quickly; API failure replies are handled too.
     await reply(event.replyToken, answer);
   } catch (err) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
+  }
+}
+
+async function getLineDisplayName(source) {
+  try {
+    let profile;
+    if (source.type === 'group' && source.groupId) {
+      profile = await lineClient.getGroupMemberProfile(source.groupId, source.userId);
+    } else if (source.type === 'room' && source.roomId) {
+      profile = await lineClient.getRoomMemberProfile(source.roomId, source.userId);
+    } else {
+      profile = await lineClient.getProfile(source.userId);
+    }
+    return profile.displayName || null;
+  } catch (err) {
+    // Profile access may be unavailable for some events or accounts; chat should still work.
+    console.warn('Could not retrieve LINE display name:', err.message);
+    return null;
   }
 }
 
