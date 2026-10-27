@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: line-deepseek-bot
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
