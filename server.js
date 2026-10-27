@@ -39,8 +39,8 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text' || !event.replyToken) return;
   const source = event.source || {};
-  // Keep conversations private per person, even in groups.
-  const chatId = source.userId || source.groupId || source.roomId;
+  // Group members share one context; one-to-one chats keep an individual context.
+  const chatId = source.groupId || source.roomId || source.userId;
   if (!chatId) return;
   const message = event.message.text.trim();
   if (!message) return;
@@ -73,7 +73,7 @@ async function handleEvent(event) {
     const history = histories.get(chatId) || [];
     const displayName = source.userId ? await getLineDisplayName(source) : null;
     const attributedMessage = displayName
-      ? `【LINE 群組成員：${displayName}】\n${message}`
+      ? `【發言者：${displayName}】\n${message}`
       : message;
     const answer = await askDeepSeek(chatId, attributedMessage, history);
     // Reply token is single-use and expires quickly; API failure replies are handled too.
