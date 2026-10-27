@@ -13,7 +13,7 @@ if (missing.length) {
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
 const MAX_HISTORY_MESSAGES = 20;
-const DEFAULT_PROMPT = '你是一位聰明、友善且條理分明的 AI 助理，請一律使用繁體中文（台灣習慣用語）回答問題。';
+const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || '你是一位聰明、友善且條理分明的 AI 助理，請一律使用繁體中文（台灣習慣用語）回答問題。';
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -24,7 +24,6 @@ const app = express();
 // Render free instances may restart or sleep; in-memory history is intentionally temporary.
 // Use a persistent database if conversation history must survive restarts or scale to replicas.
 const histories = new Map();
-const prompts = new Map();
 
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/', (_req, res) => res.status(200).send('LINE DeepSeek bot is running.'));
@@ -53,20 +52,15 @@ async function handleEvent(event) {
     return reply(event.replyToken, '🧹 已清除對話記憶，可以開始新的話題了。');
   }
   if (message === '/恢復預設') {
-    prompts.delete(chatId);
     histories.delete(chatId);
-    return reply(event.replyToken, `🔄 已恢復預設角色並清除記憶。\n\n${DEFAULT_PROMPT}`);
+    return reply(event.replyToken, '🔄 已清除對話記憶。固定人設由管理員在 Render 的 SYSTEM_PROMPT 環境變數設定。');
   }
   if (message === '/目前設定' || message.toLowerCase() === '/status') {
     const history = histories.get(chatId) || [];
-    return reply(event.replyToken, `⚙️ 目前設定\n模型：${MODEL}\n已記憶訊息：${history.length} / ${MAX_HISTORY_MESSAGES} 則\n角色：\n${prompts.get(chatId) || DEFAULT_PROMPT}`);
+    return reply(event.replyToken, `⚙️ 目前設定\n模型：${MODEL}\n已記憶訊息：${history.length} / ${MAX_HISTORY_MESSAGES} 則\n固定人設：\n${SYSTEM_PROMPT}`);
   }
-  if (message.startsWith('/設定 ') || message.toLowerCase().startsWith('/prompt ')) {
-    const prompt = message.replace(/^(\/設定|\/prompt)\s+/i, '').trim();
-    if (!prompt) return reply(event.replyToken, '請輸入角色描述，例如：/設定 你是一位日文老師');
-    prompts.set(chatId, prompt);
-    histories.delete(chatId);
-    return reply(event.replyToken, `✅ 角色已更新，對話記憶已清除。\n\n${prompt}`);
+  if (message === '/設定' || message.startsWith('/設定 ') || message.toLowerCase() === '/prompt' || message.toLowerCase().startsWith('/prompt ')) {
+    return reply(event.replyToken, '此機器人使用固定人設。管理員可在 Render → Environment 設定 SYSTEM_PROMPT，儲存後重新部署即可套用。');
   }
 
   try {
@@ -112,7 +106,7 @@ async function askDeepSeek(chatId, userMessage, history) {
     body: JSON.stringify({
       model: MODEL,
       messages: [
-        { role: 'system', content: prompts.get(chatId) || DEFAULT_PROMPT },
+        { role: 'system', content: SYSTEM_PROMPT },
         ...history,
         { role: 'user', content: userMessage },
       ],
