@@ -12,7 +12,7 @@ if (missing.length) {
 
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
-const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_MESSAGES = 20;
 const DEFAULT_PROMPT = '你是一位聰明、友善且條理分明的 AI 助理，請一律使用繁體中文（台灣習慣用語）回答問題。';
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -59,7 +59,7 @@ async function handleEvent(event) {
   }
   if (message === '/目前設定' || message.toLowerCase() === '/status') {
     const history = histories.get(chatId) || [];
-    return reply(event.replyToken, `⚙️ 目前設定\n模型：${MODEL}\n已記憶對話：${Math.floor(history.length / 2)} / ${MAX_HISTORY_TURNS} 輪\n角色：\n${prompts.get(chatId) || DEFAULT_PROMPT}`);
+    return reply(event.replyToken, `⚙️ 目前設定\n模型：${MODEL}\n已記憶訊息：${history.length} / ${MAX_HISTORY_MESSAGES} 則\n角色：\n${prompts.get(chatId) || DEFAULT_PROMPT}`);
   }
   if (message.startsWith('/設定 ') || message.toLowerCase().startsWith('/prompt ')) {
     const prompt = message.replace(/^(\/設定|\/prompt)\s+/i, '').trim();
@@ -131,7 +131,7 @@ async function askDeepSeek(chatId, userMessage, history) {
   if (!answer) throw new Error('DeepSeek returned no answer');
 
   const updated = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content: answer }];
-  histories.set(chatId, updated.slice(-MAX_HISTORY_TURNS * 2));
+  histories.set(chatId, updated.slice(-MAX_HISTORY_MESSAGES));
   return answer;
 }
 
