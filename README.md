@@ -9,6 +9,7 @@ Node.js LINE webhook bot with DeepSeek chat, shared group conversation context w
 3. Add these environment variables in the Render service settings:
    - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API channel access token.
    - `LINE_CHANNEL_SECRET`: LINE Messaging API channel secret.
+   - `LINE_BOT_USER_ID`: the bot's LINE user ID, used to detect an actual @mention in groups. Find it from a webhook event's `message.mention.mentionees[].userId` when the bot is mentioned, or via LINE's bot info API.
    - `DEEPSEEK_API_KEY`: API key from DeepSeek.
    - `SYSTEM_PROMPT`: fixed persona applied after every restart/deploy. Set this in Render to change the bot's role.
    - Optional: `DEEPSEEK_MODEL` (defaults to `deepseek-chat`).
@@ -21,6 +22,7 @@ Do not commit `.env` or paste API keys into source code. `.env.example` lists th
 
 - LINE webhook signature verification is enabled by `@line/bot-sdk` middleware.
 - Group and room members share the same conversation history (up to the latest 20 messages); one-to-one chats have separate history. Each incoming message includes the sender's LINE display name in DeepSeek context when LINE provides it.
+- In groups and rooms, the bot responds only when LINE marks the bot itself in the message mention metadata. Direct chats continue to work normally. Configure `LINE_BOT_USER_ID` in Render.
 - Group and room profile lookup depends on LINE making that member profile available; failures do not prevent replies.
 - `/設定` now explains that the persona is fixed. Change it in Render → Environment by editing `SYSTEM_PROMPT`, then save and redeploy; `/恢復預設` clears chat history without changing the persona.
 - The included history and custom prompts live in memory. Render restarts, free-instance sleeps, or multiple instances can clear or separate that state. Add a persistent database such as Redis or PostgreSQL if history must persist.

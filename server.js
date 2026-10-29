@@ -38,6 +38,9 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
 async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text' || !event.replyToken) return;
   const source = event.source || {};
+  // In group and multi-person room chats, only respond when LINE marks this bot as mentioned.
+  const isGroupChat = Boolean(source.groupId || source.roomId);
+  if (isGroupChat && !isMentionedBot(event.message)) return;
   // Group members share one context; one-to-one chats keep an individual context.
   const chatId = source.groupId || source.roomId || source.userId;
   if (!chatId) return;
@@ -76,6 +79,16 @@ async function handleEvent(event) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
   }
+}
+
+function isMentionedBot(message) {
+  const mentionees = message.mention?.mentionees || [];
+  const botUserId = process.env.LINE_BOT_USER_ID;
+  if (!botUserId) {
+    console.error('LINE_BOT_USER_ID is required to detect bot mentions in group chats.');
+    return false;
+  }
+  return mentionees.some((mentionee) => mentionee.type === 'user' && mentionee.userId === botUserId);
 }
 
 async function getLineDisplayName(source) {

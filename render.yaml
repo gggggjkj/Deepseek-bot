@@ -11,6 +11,8 @@ services:
         sync: false
       - key: LINE_CHANNEL_SECRET
         sync: false
+      - key: LINE_BOT_USER_ID
+        sync: false
       - key: DEEPSEEK_API_KEY
         sync: false
       - key: SYSTEM_PROMPT
