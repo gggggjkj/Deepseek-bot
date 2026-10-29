@@ -20,6 +20,7 @@ const lineConfig = {
 };
 const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: lineConfig.channelAccessToken });
 const app = express();
+let botUserIdPromise;
 
 // Render free instances may restart or sleep; in-memory history is intentionally temporary.
 // Use a persistent database if conversation history must survive restarts or scale to replicas.
@@ -40,7 +41,7 @@ async function handleEvent(event) {
   const source = event.source || {};
   // In group and multi-person room chats, only respond when LINE marks this bot as mentioned.
   const isGroupChat = Boolean(source.groupId || source.roomId);
-  if (isGroupChat && !isMentionedBot(event.message)) return;
+  if (isGroupChat && !(await isMentionedBot(event.message))) return;
   // Group members share one context; one-to-one chats keep an individual context.
   const chatId = source.groupId || source.roomId || source.userId;
   if (!chatId) return;
@@ -81,14 +82,17 @@ async function handleEvent(event) {
   }
 }
 
-function isMentionedBot(message) {
+async function isMentionedBot(message) {
   const mentionees = message.mention?.mentionees || [];
-  const botUserId = process.env.LINE_BOT_USER_ID;
-  if (!botUserId) {
-    console.error('LINE_BOT_USER_ID is required to detect bot mentions in group chats.');
+  if (mentionees.some((mentionee) => mentionee.isSelf === true)) return true;
+  if (!mentionees.some((mentionee) => mentionee.type === 'user' && mentionee.userId)) return false;
+  try {
+    const botUserId = process.env.LINE_BOT_USER_ID || await getBotUserId();
+    return mentionees.some((mentionee) => mentionee.type === 'user' && mentionee.userId === botUserId);
+  } catch (err) {
+    console.error('Could not identify bot mention. Check LINE channel access token and webhook payload:', err.message);
     return false;
   }
-  return mentionees.some((mentionee) => mentionee.type === 'user' && mentionee.userId === botUserId);
 }
 
 async function getLineDisplayName(source) {
@@ -107,6 +111,16 @@ async function getLineDisplayName(source) {
     console.warn('Could not retrieve LINE display name:', err.message);
     return null;
   }
+}
+
+async function getBotUserId() {
+  if (!botUserIdPromise) {
+    botUserIdPromise = lineClient.getBotInfo().then((profile) => profile.userId).catch((err) => {
+      botUserIdPromise = undefined;
+      throw err;
+    });
+  }
+  return botUserIdPromise;
 }
 
 async function askDeepSeek(chatId, userMessage, history) {
