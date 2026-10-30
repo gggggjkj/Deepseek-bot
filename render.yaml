@@ -17,3 +17,5 @@ services:
         sync: false
       - key: SYSTEM_PROMPT
         value: 你是一位聰明、友善且條理分明的 AI 助理，請一律使用繁體中文（台灣習慣用語）回答問題。
+      - key: DEEPSEEK_MODEL
+        value: deepseek-flash

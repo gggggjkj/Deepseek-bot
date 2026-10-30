@@ -11,7 +11,7 @@ if (missing.length) {
 }
 
 const PORT = Number(process.env.PORT) || 3000;
-const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+const MODEL = process.env.DEEPSEEK_MODEL || 'deepseek-flash';
 const MAX_HISTORY_MESSAGES = 20;
 const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || '你是一位聰明、友善且條理分明的 AI 助理，請一律使用繁體中文（台灣習慣用語）回答問題。';
 const lineConfig = {
@@ -37,7 +37,7 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
 });
 
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text' || !event.replyToken) return;
+  if (event.type !== 'message' || !['text', 'image'].includes(event.message.type) || !event.replyToken) return;
   const source = event.source || {};
   // In group and multi-person room chats, only respond when LINE marks this bot as mentioned.
   const isGroupChat = Boolean(source.groupId || source.roomId);
@@ -45,7 +45,7 @@ async function handleEvent(event) {
   // Group members share one context; one-to-one chats keep an individual context.
   const chatId = source.groupId || source.roomId || source.userId;
   if (!chatId) return;
-  const message = event.message.text.trim();
+  const message = event.message.type === 'text' ? event.message.text.trim() : '請描述這張圖片。';
   if (!message) return;
 
   if (message === '/說明' || message.toLowerCase() === '/help') {
@@ -73,13 +73,28 @@ async function handleEvent(event) {
     const attributedMessage = displayName
       ? `【發言者：${displayName}】\n${message}`
       : message;
-    const answer = await askDeepSeek(chatId, attributedMessage, history);
+    const imageDataUrl = event.message.type === 'image' ? await getLineImageDataUrl(event.message.id) : null;
+    const answer = await askDeepSeek(chatId, attributedMessage, history, imageDataUrl);
     // Reply token is single-use and expires quickly; API failure replies are handled too.
     await reply(event.replyToken, answer);
   } catch (err) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
   }
+}
+
+async function getLineImageDataUrl(messageId) {
+  const url = `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`;
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${lineConfig.channelAccessToken}` },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw new Error(`LINE image download failed: HTTP ${response.status}`);
+  const mimeType = response.headers.get('content-type') || 'image/jpeg';
+  if (!/^image\/(jpeg|png|gif|webp)$/i.test(mimeType)) throw new Error(`Unsupported image type: ${mimeType}`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > 32 * 1024 * 1024) throw new Error('Image is larger than DeepSeek inline image limit (32 MiB).');
+  return `data:${mimeType};base64,${bytes.toString('base64')}`;
 }
 
 async function isMentionedBot(message) {
@@ -123,7 +138,13 @@ async function getBotUserId() {
   return botUserIdPromise;
 }
 
-async function askDeepSeek(chatId, userMessage, history) {
+async function askDeepSeek(chatId, userMessage, history, imageDataUrl = null) {
+  const userContent = imageDataUrl
+    ? [
+        { type: 'text', text: userMessage },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ]
+    : userMessage;
   const response = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: {
@@ -131,11 +152,11 @@ async function askDeepSeek(chatId, userMessage, history) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: imageDataUrl ? 'deepseek-flash' : MODEL,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         ...history,
-        { role: 'user', content: userMessage },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.7,
       stream: false,
@@ -151,7 +172,9 @@ async function askDeepSeek(chatId, userMessage, history) {
   const answer = result.choices?.[0]?.message?.content?.trim();
   if (!answer) throw new Error('DeepSeek returned no answer');
 
-  const updated = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content: answer }];
+  // Store a text-only summary for image turns to keep memory bounded and avoid replaying image payloads.
+  const storedUserMessage = imageDataUrl ? `${userMessage}（已附圖片）` : userMessage;
+  const updated = [...history, { role: 'user', content: storedUserMessage }, { role: 'assistant', content: answer }];
   histories.set(chatId, updated.slice(-MAX_HISTORY_MESSAGES));
   return answer;
 }

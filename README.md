@@ -1,6 +1,6 @@
 # LINE DeepSeek Bot on Render
 
-Node.js LINE webhook bot with DeepSeek chat, shared group conversation context with sender attribution, and the `/目前設定`, `/清除記憶`, `/恢復預設`, and `/help` commands. The system persona is fixed through the `SYSTEM_PROMPT` environment variable.
+Node.js LINE webhook bot with DeepSeek text and image understanding, shared group conversation context with sender attribution, and the `/目前設定`, `/清除記憶`, `/恢復預設`, and `/help` commands. The system persona is fixed through the `SYSTEM_PROMPT` environment variable.
 
 ## Deploy to Render
 
@@ -11,7 +11,7 @@ Node.js LINE webhook bot with DeepSeek chat, shared group conversation context w
    - `LINE_CHANNEL_SECRET`: LINE Messaging API channel secret.
    - `DEEPSEEK_API_KEY`: API key from DeepSeek.
    - `SYSTEM_PROMPT`: fixed persona applied after every restart/deploy. Set this in Render to change the bot's role.
-   - Optional: `DEEPSEEK_MODEL` (defaults to `deepseek-chat`).
+   - `DEEPSEEK_MODEL` (defaults to `deepseek-flash`; image messages always use `deepseek-flash`).
 4. After deployment, set the LINE Developers **Webhook URL** to `https://YOUR-RENDER-DOMAIN/webhook`, enable **Use webhook**, then use **Verify**.
 5. Add the bot as a LINE friend and send `/help` to confirm it responds.
 
@@ -22,6 +22,7 @@ Do not commit `.env` or paste API keys into source code. `.env.example` lists th
 - LINE webhook signature verification is enabled by `@line/bot-sdk` middleware.
 - Group and room members share the same conversation history (up to the latest 20 messages); one-to-one chats have separate history. Each incoming message includes the sender's LINE display name in DeepSeek context when LINE provides it.
 - In groups and rooms, the bot responds only when LINE marks the bot itself in the message mention metadata. It uses the mention `isSelf` flag or resolves the bot ID with LINE's bot info endpoint; direct chats continue to work normally. If needed, `LINE_BOT_USER_ID` can be set in Render to skip the lookup.
+- The bot can analyze LINE image messages using DeepSeek Flash. Image attachments are downloaded from LINE and sent as base64; images over 32 MiB or unsupported formats are rejected.
 - Group and room profile lookup depends on LINE making that member profile available; failures do not prevent replies.
 - `/設定` now explains that the persona is fixed. Change it in Render → Environment by editing `SYSTEM_PROMPT`, then save and redeploy; `/恢復預設` clears chat history without changing the persona.
 - The included history and custom prompts live in memory. Render restarts, free-instance sleeps, or multiple instances can clear or separate that state. Add a persistent database such as Redis or PostgreSQL if history must persist.
