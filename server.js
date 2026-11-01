@@ -21,6 +21,8 @@ const lineConfig = {
 const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken: lineConfig.channelAccessToken });
 const app = express();
 let botUserIdPromise;
+const generatedImages = new Map();
+const NVIDIA_IMAGE_ENDPOINT = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein';
 
 // Render free instances may restart or sleep; in-memory history is intentionally temporary.
 // Use a persistent database if conversation history must survive restarts or scale to replicas.
@@ -28,6 +30,11 @@ const histories = new Map();
 
 app.get('/health', (_req, res) => res.status(200).send('ok'));
 app.get('/', (_req, res) => res.status(200).send('LINE DeepSeek bot is running.'));
+app.get('/generated/:id', (req, res) => {
+  const image = generatedImages.get(req.params.id);
+  if (!image) return res.sendStatus(404);
+  res.set('Cache-Control', 'public, max-age=300').type(image.mimeType).send(image.bytes);
+});
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   // Acknowledge LINE promptly; process events asynchronously so webhook retries are less likely.
   res.status(200).json({ status: 'ok' });
@@ -67,6 +74,25 @@ async function handleEvent(event) {
     return reply(event.replyToken, '此機器人使用固定人設。管理員可在 Render → Environment 設定 SYSTEM_PROMPT，儲存後重新部署即可套用。');
   }
 
+  const imagePrompt = message.match(/^\/(?:生圖|畫圖)\s+(.+)$/s);
+  if (imagePrompt) {
+    if (!process.env.NVIDIA_API_KEY) return reply(event.replyToken, '⚠️ 管理員尚未在 Render 設定 NVIDIA_API_KEY。');
+    await reply(event.replyToken, '🎨 收到描述，正在生成圖片…');
+    try {
+      const image = await generateImage(imagePrompt[1].trim());
+      const imageId = crypto.randomUUID();
+      generatedImages.set(imageId, image);
+      setTimeout(() => generatedImages.delete(imageId), 10 * 60 * 1000).unref();
+      const publicBaseUrl = (process.env.PUBLIC_BASE_URL || inferPublicBaseUrl()).replace(/\/$/, '');
+      if (!publicBaseUrl) throw new Error('PUBLIC_BASE_URL is not configured');
+      await pushImage(chatId, `${publicBaseUrl}/generated/${imageId}`);
+    } catch (err) {
+      console.error('NVIDIA image generation failed:', err);
+      await pushText(chatId, '⚠️ 圖片生成失敗，請稍後再試或檢查 NVIDIA API 金鑰與額度。');
+    }
+    return;
+  }
+
   try {
     const history = histories.get(chatId) || [];
     const displayName = source.userId ? await getLineDisplayName(source) : null;
@@ -81,6 +107,34 @@ async function handleEvent(event) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
   }
+}
+
+function inferPublicBaseUrl() {
+  if (process.env.RENDER_EXTERNAL_URL) return process.env.RENDER_EXTERNAL_URL;
+  return null;
+}
+
+async function generateImage(prompt) {
+  if (!prompt || prompt.length > 2000) throw new Error('Prompt must be between 1 and 2000 characters.');
+  const response = await fetch(NVIDIA_IMAGE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.NVIDIA_API_KEY}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt, height: 1024, width: 1024, cfg_scale: 3.5, samples: 1, seed: 0, steps: 16 }),
+    signal: AbortSignal.timeout(240000),
+  });
+  if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${(await response.text()).slice(0, 800)}`);
+  const result = await response.json();
+  const encoded = result.image || result.b64_image || result.images?.[0] || result.data?.[0]?.b64_json;
+  if (!encoded || typeof encoded !== 'string') throw new Error('NVIDIA response did not contain an image.');
+  const match = encoded.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
+  const mimeType = match ? match[1] : 'image/jpeg';
+  const bytes = Buffer.from(match ? match[2] : encoded, 'base64');
+  if (!bytes.length) throw new Error('NVIDIA returned an empty image.');
+  return { bytes, mimeType };
 }
 
 async function getLineImageDataUrl(messageId) {
@@ -188,6 +242,25 @@ async function reply(replyToken, text) {
     });
   } catch (err) {
     console.error('LINE reply failed:', err);
+  }
+}
+
+async function pushImage(chatId, imageUrl) {
+  try {
+    await lineClient.pushMessage({
+      to: chatId,
+      messages: [{ type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }],
+    });
+  } catch (err) {
+    console.error('LINE image push failed:', err);
+  }
+}
+
+async function pushText(chatId, text) {
+  try {
+    await lineClient.pushMessage({ to: chatId, messages: [{ type: 'text', text }] });
+  } catch (err) {
+    console.error('LINE error push failed:', err);
   }
 }
 

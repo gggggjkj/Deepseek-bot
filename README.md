@@ -1,6 +1,6 @@
 # LINE DeepSeek Bot on Render
 
-Node.js LINE webhook bot with DeepSeek text and image understanding, shared group conversation context with sender attribution, and the `/目前設定`, `/清除記憶`, `/恢復預設`, and `/help` commands. The system persona is fixed through the `SYSTEM_PROMPT` environment variable.
+Node.js LINE webhook bot with DeepSeek text and image understanding, NVIDIA FLUX image generation, shared group conversation context with sender attribution, and the `/生圖`, `/目前設定`, `/清除記憶`, `/恢復預設`, and `/help` commands. The system persona is fixed through the `SYSTEM_PROMPT` environment variable.
 
 ## Deploy to Render
 
@@ -10,6 +10,7 @@ Node.js LINE webhook bot with DeepSeek text and image understanding, shared grou
    - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging API channel access token.
    - `LINE_CHANNEL_SECRET`: LINE Messaging API channel secret.
    - `DEEPSEEK_API_KEY`: API key from DeepSeek.
+   - `NVIDIA_API_KEY`: API key from NVIDIA Build.
    - `SYSTEM_PROMPT`: fixed persona applied after every restart/deploy. Set this in Render to change the bot's role.
    - `DEEPSEEK_MODEL` (defaults to `deepseek-flash`; image messages always use `deepseek-flash`).
 4. After deployment, set the LINE Developers **Webhook URL** to `https://YOUR-RENDER-DOMAIN/webhook`, enable **Use webhook**, then use **Verify**.
@@ -22,6 +23,7 @@ Do not commit `.env` or paste API keys into source code. `.env.example` lists th
 - LINE webhook signature verification is enabled by `@line/bot-sdk` middleware.
 - Group and room members share the same conversation history (up to the latest 20 messages); one-to-one chats have separate history. Each incoming message includes the sender's LINE display name in DeepSeek context when LINE provides it.
 - In groups and rooms, the bot responds only when LINE marks the bot itself in the message mention metadata. It uses the mention `isSelf` flag or resolves the bot ID with LINE's bot info endpoint; direct chats continue to work normally. If needed, `LINE_BOT_USER_ID` can be set in Render to skip the lookup.
+- Send `/生圖 <描述>` (or `/畫圖 <描述>`) to generate an image with NVIDIA FLUX 3 Image Klein. The generated image is temporarily served from Render for LINE to fetch, then removed after 10 minutes.
 - The bot can analyze LINE image messages using DeepSeek Flash. Image attachments are downloaded from LINE and sent as base64; images over 32 MiB or unsupported formats are rejected.
 - Group and room profile lookup depends on LINE making that member profile available; failures do not prevent replies.
 - `/設定` now explains that the persona is fixed. Change it in Render → Environment by editing `SYSTEM_PROMPT`, then save and redeploy; `/恢復預設` clears chat history without changing the persona.
