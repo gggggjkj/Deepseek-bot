@@ -52,7 +52,9 @@ async function handleEvent(event) {
   // Group members share one context; one-to-one chats keep an individual context.
   const chatId = source.groupId || source.roomId || source.userId;
   if (!chatId) return;
-  const message = event.message.type === 'text' ? event.message.text.trim() : '請描述這張圖片。';
+  const rawMessage = event.message.type === 'text' ? event.message.text : '';
+  const message = (isGroupChat ? removeBotMention(rawMessage, event.message) : rawMessage).trim()
+    || (event.message.type === 'image' ? '請描述這張圖片。' : '');
   if (!message) return;
 
   if (message === '/說明' || message.toLowerCase() === '/help') {
@@ -108,6 +110,19 @@ async function handleEvent(event) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
   }
+}
+
+function removeBotMention(text, message) {
+  const ranges = (message.mention?.mentionees || [])
+    .filter((mentionee) => mentionee.isSelf === true)
+    .map(({ index, length }) => ({ index, length }))
+    .filter(({ index, length }) => Number.isInteger(index) && Number.isInteger(length) && length > 0)
+    .sort((a, b) => b.index - a.index);
+  let result = text;
+  for (const { index, length } of ranges) {
+    result = result.slice(0, index) + result.slice(index + length);
+  }
+  return result;
 }
 
 function safeErrorMessage(err) {
