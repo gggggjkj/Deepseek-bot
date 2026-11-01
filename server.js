@@ -88,7 +88,8 @@ async function handleEvent(event) {
       await pushImage(chatId, `${publicBaseUrl}/generated/${imageId}`);
     } catch (err) {
       console.error('NVIDIA image generation failed:', err);
-      await pushText(chatId, '⚠️ 圖片生成失敗，請稍後再試或檢查 NVIDIA API 金鑰與額度。');
+      const detail = safeErrorMessage(err);
+      await pushText(chatId, `⚠️ 圖片生成失敗：\n${detail}`);
     }
     return;
   }
@@ -107,6 +108,13 @@ async function handleEvent(event) {
     console.error('Message handling failed:', err);
     await reply(event.replyToken, '⚠️ 目前無法取得 AI 回覆，請稍後再試。');
   }
+}
+
+function safeErrorMessage(err) {
+  const raw = String(err?.message || '未知錯誤')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [已隱藏]')
+    .replace(/(NVIDIA_API_KEY\s*[=:]\s*)\S+/gi, '$1[已隱藏]');
+  return [...raw].slice(0, 1200).join('');
 }
 
 function inferPublicBaseUrl() {
