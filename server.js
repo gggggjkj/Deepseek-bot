@@ -136,8 +136,19 @@ async function generateImage(prompt) {
   });
   if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${(await response.text()).slice(0, 800)}`);
   const result = await response.json();
-  const encoded = result.image || result.b64_image || result.images?.[0] || result.data?.[0]?.b64_json;
-  if (!encoded || typeof encoded !== 'string') throw new Error('NVIDIA response did not contain an image.');
+  const encoded = result.image || result.b64_image || result.base64 || result.artifacts?.[0]?.base64
+    || result.images?.[0]?.b64_json || result.images?.[0] || result.data?.[0]?.b64_json
+    || result.data?.[0]?.image || result.data?.[0]?.url;
+  if (!encoded || typeof encoded !== 'string') {
+    const summary = JSON.stringify({ keys: Object.keys(result || {}), dataKeys: Object.keys(result?.data?.[0] || {}), message: result?.detail || result?.message || result?.error }).slice(0, 700);
+    throw new Error(`NVIDIA response did not contain a recognized image field. Response: ${summary}`);
+  }
+  if (/^https?:\/\//i.test(encoded)) {
+    const imageResponse = await fetch(encoded, { signal: AbortSignal.timeout(30000) });
+    if (!imageResponse.ok) throw new Error(`Could not download NVIDIA image URL: HTTP ${imageResponse.status}`);
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    return { bytes: Buffer.from(await imageResponse.arrayBuffer()), mimeType: contentType };
+  }
   const match = encoded.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/s);
   const mimeType = match ? match[1] : 'image/jpeg';
   const bytes = Buffer.from(match ? match[2] : encoded, 'base64');
