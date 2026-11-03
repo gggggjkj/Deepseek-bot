@@ -90,7 +90,9 @@ async function handleEvent(event) {
       await pushImage(chatId, `${publicBaseUrl}/generated/${imageId}`);
     } catch (err) {
       console.error('NVIDIA image generation failed:', err);
-      const detail = safeErrorMessage(err);
+      const detail = err?.status === 404
+        ? 'NVIDIA 目前沒有開放這個 Qwen-Image 託管 API 端點（HTTP 404）。這個模型需要自行部署 NIM，不能只用 NVIDIA Build API 金鑰直接呼叫。請改用有 Hosted API 的生圖模型，或提供已部署 NIM 的 endpoint URL。'
+        : safeErrorMessage(err);
       await pushText(chatId, `⚠️ 圖片生成失敗：\n${detail}`);
     }
     return;
@@ -149,7 +151,11 @@ async function generateImage(prompt) {
     body: JSON.stringify({ prompt, height: 1024, width: 1024, samples: 1, seed: 0, steps: 30 }),
     signal: AbortSignal.timeout(240000),
   });
-  if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${(await response.text()).slice(0, 800)}`);
+  if (!response.ok) {
+    const error = new Error(`NVIDIA API HTTP ${response.status}: ${(await response.text()).slice(0, 800)}`);
+    error.status = response.status;
+    throw error;
+  }
   const result = await response.json();
   const encoded = result.image || result.b64_image || result.base64 || result.artifacts?.[0]?.base64
     || result.images?.[0]?.b64_json || result.images?.[0] || result.data?.[0]?.b64_json
