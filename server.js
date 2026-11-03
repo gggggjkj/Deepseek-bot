@@ -22,7 +22,7 @@ const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken
 const app = express();
 let botUserIdPromise;
 const generatedImages = new Map();
-const NVIDIA_IMAGE_ENDPOINT = 'https://ai.api.nvidia.com/v1/genai/qwen/qwen-image';
+const NVIDIA_IMAGE_ENDPOINT = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein';
 
 // Render free instances may restart or sleep; in-memory history is intentionally temporary.
 // Use a persistent database if conversation history must survive restarts or scale to replicas.
@@ -91,7 +91,7 @@ async function handleEvent(event) {
     } catch (err) {
       console.error('NVIDIA image generation failed:', err);
       const detail = err?.status === 404
-        ? 'NVIDIA 目前沒有開放這個 Qwen-Image 託管 API 端點（HTTP 404）。這個模型需要自行部署 NIM，不能只用 NVIDIA Build API 金鑰直接呼叫。請改用有 Hosted API 的生圖模型，或提供已部署 NIM 的 endpoint URL。'
+        ? 'NVIDIA 回傳 HTTP 404，表示此託管模型端點目前無法使用。請確認 NVIDIA Build 帳戶已啟用 Public API Endpoints 權限，並在 NVIDIA Build 該模型頁確認 Hosted API 可用。'
         : safeErrorMessage(err);
       await pushText(chatId, `⚠️ 圖片生成失敗：\n${detail}`);
     }
@@ -148,7 +148,7 @@ async function generateImage(prompt) {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt, height: 1024, width: 1024, samples: 1, seed: 0, steps: 30 }),
+    body: JSON.stringify({ prompt, height: 1024, width: 1024, cfg_scale: 3.5, samples: 1, seed: 0, steps: 16 }),
     signal: AbortSignal.timeout(240000),
   });
   if (!response.ok) {
