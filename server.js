@@ -22,7 +22,7 @@ const lineClient = new line.messagingApi.MessagingApiClient({ channelAccessToken
 const app = express();
 let botUserIdPromise;
 const generatedImages = new Map();
-const NVIDIA_IMAGE_ENDPOINT = 'https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein';
+const NVIDIA_IMAGE_ENDPOINT = 'https://ai.api.nvidia.com/v1/genai/qwen/qwen-image';
 
 // Render free instances may restart or sleep; in-memory history is intentionally temporary.
 // Use a persistent database if conversation history must survive restarts or scale to replicas.
@@ -146,7 +146,7 @@ async function generateImage(prompt) {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ prompt, height: 1024, width: 1024, cfg_scale: 3.5, samples: 1, seed: 0, steps: 16 }),
+    body: JSON.stringify({ prompt, height: 1024, width: 1024, samples: 1, seed: 0, steps: 30 }),
     signal: AbortSignal.timeout(240000),
   });
   if (!response.ok) throw new Error(`NVIDIA API HTTP ${response.status}: ${(await response.text()).slice(0, 800)}`);
